@@ -5,6 +5,7 @@ from torch import Tensor
 import chess
 from chess import Board, Move
 
+
 def board_to_tensor(board: Board) -> Tensor:
     assert not board.is_game_over(), "Board is in terminal state"
     player_color = board.turn
@@ -32,6 +33,7 @@ def board_to_tensor(board: Board) -> Tensor:
         tensor[17, :, :] = 1.0
     return tensor
 
+
 def move_to_index(move: Move) -> int:
     from_square = move.from_square
     to_square = move.to_square
@@ -39,7 +41,7 @@ def move_to_index(move: Move) -> int:
     from_col = chess.square_file(from_square)
     to_row = chess.square_rank(to_square)
     to_col = chess.square_file(to_square)
-    if chess.square_distance(from_square, to_square) == 2 and (
+    if chess.square_distance(from_square, to_square) == 3 and (
         abs(from_row - to_row) == 2 or abs(from_col - to_col) == 2
     ):
         # knight moves
@@ -82,10 +84,8 @@ class SEBlock(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        print(self.layers(x).shape)
         scale, shift = torch.chunk(self.layers(x), 2, dim=-1)
         scale = self.sigmoid(scale)
-        print(x.shape, scale.shape, shift.shape)
         return x * scale[:, :, None, None] + shift[:, :, None, None]
 
 

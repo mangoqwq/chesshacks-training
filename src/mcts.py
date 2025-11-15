@@ -3,9 +3,10 @@ import chess
 from chess.polyglot import zobrist_hash
 from chess import Board, Move
 import numpy as np
-from numpy import float64, int64
+from numpy import float64, int64, uint64
 from typing import Dict, Sequence, Any
 from dataclasses import dataclass
+import time
 
 from leela_cnn import board_to_tensor, move_to_index
 
@@ -58,7 +59,7 @@ class Node:
 class MCTS:
     model: Any
     c_puct: float64
-    nodes: Dict[int64, Node]
+    nodes: Dict[int, Node]
 
     def __init__(self, model: Any, c_puct: float64 = float64(1.0)):
         self.model = model
@@ -66,10 +67,10 @@ class MCTS:
         self.nodes = {}
 
     def construct_node(self, board: Board) -> Node:
-        board_hash = int64(zobrist_hash(board))
+        board_hash = uint64(zobrist_hash(board))
         if board_hash not in self.nodes:
             tensor_board = board_to_tensor(board)
-            nn_val, nn_policy = self.model.predict(tensor_board)
+            nn_policy, nn_val = self.model.predict(tensor_board)
             move_indices = [
                 move_to_index(move if board.turn == chess.WHITE else flip_move(move))
                 for move in board.legal_moves
@@ -106,11 +107,18 @@ class MCTS:
         move_idx = int(np.argmax(ucb))
         return move_idx
 
+    def get_node(self, board: Board) -> Node:
+        board_hash = uint64(zobrist_hash(board))
+        if board_hash not in self.nodes:
+            self.construct_node(board)
+
+        return self.nodes[board_hash]
+
     def search(self, board: Board) -> float64:
         if board.is_game_over():
             return -result_to_value(board.result())
 
-        board_hash = int64(zobrist_hash(board))
+        board_hash = uint64(zobrist_hash(board))
         if board_hash not in self.nodes:
             node = self.construct_node(board)
             return -node.nn_value
@@ -125,3 +133,29 @@ class MCTS:
         value = self.search(next_board)
         node.register_visit(edge, value)
         return -value
+
+    def get_most_explored_move(self, board: Board) -> Move:
+        if board.is_game_over():
+            return Move.null()
+        node = self.get_node(board)
+        visit_counts = [edge.num_visits for edge in node.edges]
+        most_visited_idx = int(np.argmax(visit_counts))
+        return node.moves[most_visited_idx]
+
+    def ponder(self, board: Board, num_simulations: int) -> Move:
+        if board.is_game_over():
+            return Move.null()
+
+        for _ in range(num_simulations):
+            self.search(board)
+
+        return self.get_most_explored_move(board)
+
+    def ponder_time(
+        self, board: Board, time_ns: int, simulation_time_ns: int = int(1e7)
+    ) -> Move:
+        start_time = time.time_ns()
+        while time.time_ns() + simulation_time_ns - start_time <= time_ns:
+            self.search(board)
+
+        return self.get_most_explored_move(board)
