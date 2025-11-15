@@ -1,3 +1,4 @@
+import torch
 import chess
 from chess.polyglot import zobrist_hash
 from chess import Board, Move
@@ -6,7 +7,22 @@ from numpy import float64, int64
 from typing import Dict, Sequence, Any
 from dataclasses import dataclass
 
-from leela_cnn import board_to_tensor, tensor_to_board
+from leela_cnn import board_to_tensor, move_to_index
+
+
+def flip_move(move: Move) -> Move:
+    from_square = chess.square_mirror(move.from_square)
+    to_square = chess.square_mirror(move.to_square)
+    return Move(from_square, to_square)
+
+
+def result_to_value(result: str) -> float64:
+    if result == "1-0":
+        return float64(1.0)
+    elif result == "0-1":
+        return float64(-1.0)
+    else:
+        return float64(0.0)
 
 
 @dataclass
@@ -54,13 +70,20 @@ class MCTS:
         if board_hash not in self.nodes:
             tensor_board = board_to_tensor(board)
             nn_val, nn_policy = self.model.predict(tensor_board)
+            move_indices = [
+                move_to_index(move if board.turn == chess.WHITE else flip_move(move))
+                for move in board.legal_moves
+            ]
+            nn_policy = nn_policy[move_indices]
+            torch.softmax(nn_policy, dim=0, out=nn_policy)
+
             edges = [
                 Edge(
                     q=float64(0.0),
                     num_visits=int64(0),
-                    p_prior=float64(nn_policy[tensor_to_board(move)]),
+                    p_prior=float64(nn_policy[i].item()),
                 )
-                for move in board.legal_moves
+                for i, move in enumerate(board.legal_moves)
             ]
             self.nodes[board_hash] = Node(
                 nn_value=float64(nn_val),

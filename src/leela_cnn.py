@@ -46,66 +46,34 @@ def move_to_index(move: Move) -> int:
     from_col = chess.square_file(from_square)
     to_row = chess.square_rank(to_square)
     to_col = chess.square_file(to_square)
-    if chess.square_distance(from_square, to_square) == 1 and (
-        from_row == to_row or from_col == to_col
-    ):
-        direction = 0  # up, down, left, right
-    elif chess.square_distance(from_square, to_square) == 2 and (
+    if chess.square_distance(from_square, to_square) == 2 and (
         abs(from_row - to_row) == 2 or abs(from_col - to_col) == 2
     ):
-        direction = 1  # knight moves
+        # knight moves
+        diff_to_dir = {
+            (2, 1): 0,
+            (2, -1): 1,
+            (-2, 1): 2,
+            (-2, -1): 3,
+            (1, 2): 4,
+            (1, -2): 5,
+            (-1, 2): 6,
+            (-1, -2): 7,
+        }
+        direction = diff_to_dir[(to_row - from_row, to_col - from_col)]
     else:
-        direction = 2 + (to_row - from_row + 1) * 3 + (to_col - from_col + 1)
-    index = direction * 64 + from_row * 8 + from_col
+        if from_row == to_row:
+            # horizontal moves
+            direction = 8 + to_col
+        elif from_col == to_col:
+            # vertical moves
+            direction = 16 + to_row
+        elif to_row - to_col == from_row - from_col:
+            direction = 24 + to_row
+        else:
+            direction = 32 + to_row
+    index = direction * 40 + from_row * 8 + from_col
     return index
-
-def index_to_move(index: int) -> Move:
-    direction = index // 64
-    from_square_index = index % 64
-    from_row = from_square_index // 8
-    from_col = from_square_index % 8
-    if direction == 0:
-        to_row, to_col = from_row, from_col + 1  # example: right move
-    elif direction == 1:
-        to_row, to_col = from_row + 2, from_col + 1  # example: knight move
-    else:
-        dir_index = direction - 2
-        delta_row = (dir_index // 3) - 1
-        delta_col = (dir_index % 3) - 1
-        to_row = from_row + delta_row
-        to_col = from_col + delta_col
-    from_square = chess.square(from_col, from_row)
-    to_square = chess.square(to_col, to_row)
-    return Move(from_square, to_square)
-
-def moves_to_mask(tensor: Tensor) -> Board:
-    board = Board.empty()
-    piece_map = {}
-    for row in range(8):
-        for col in range(8):
-            for piece_type in range(6):
-                if tensor[piece_type, row, col] == 1.0:
-                    square = chess.square(col, row)
-                    piece_map[square] = chess.Piece(piece_type + 1, chess.WHITE)
-                if tensor[piece_type + 6, row, col] == 1.0:
-                    square = chess.square(col, row)
-                    piece_map[square] = chess.Piece(piece_type + 1, chess.BLACK)
-    board.set_piece_map(piece_map)
-    if tensor[13, 0, 0] == 1.0:
-        player_color = chess.WHITE
-    else:
-        player_color = chess.BLACK
-    if tensor[14, 0, 0] == 1.0:
-        board.castling_rights |= chess.BB_H1
-    if tensor[15, 0, 0] == 1.0:
-        board.castling_rights |= chess.BB_A1
-    if tensor[16, 0, 0] == 1.0:
-        board.castling_rights |= chess.BB_H8
-    if tensor[17, 0, 0] == 1.0:
-        board.castling_rights |= chess.BB_A8
-    if player_color == chess.BLACK:
-        board = board.mirror()
-    return board
 
 
 class SEBlock(nn.Module):
