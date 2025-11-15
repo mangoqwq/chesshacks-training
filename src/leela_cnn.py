@@ -5,13 +5,6 @@ from torch import Tensor
 import chess
 from chess import Board, Move
 
-# Input: ((6 + 6) + 1 + 1 + 2 + 2) * 8 * 8
-#        ((self pieces + opponent pieces) + opponent pawn previous + colour + self castling right (king and queen side) + opponent castling right (king and queen side)) * board
-# Output: Policy, Value
-# Policy: (8 * 4 + 8) * 8 * 8
-#         (queen moves + knight moves) * board (starting position)
-# Value : Single value in [-1, 1]
-
 def board_to_tensor(board: Board) -> Tensor:
     assert not board.is_game_over(), "Board is in terminal state"
     player_color = board.turn
@@ -89,22 +82,24 @@ class SEBlock(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        scale, shift = torch.chunk(self.layers(x), 2)
+        print(self.layers(x).shape)
+        scale, shift = torch.chunk(self.layers(x), 2, dim=-1)
         scale = self.sigmoid(scale)
-        return x * scale[:, None, None] + shift[:, None, None]
+        print(x.shape, scale.shape, shift.shape)
+        return x * scale[:, :, None, None] + shift[:, :, None, None]
 
 
 class LeelaCNN(nn.Module):
     # Input: ((6 + 6) + 1 + 1 + 2 + 2) * 8 * 8
     #        ((self pieces + opponent pieces) + opponent pawn previous + colour + self castling right (king and queen side) + opponent castling right (king and queen side)) * board
     # Output: Policy, Value
-    # Policy: (7 * 4 + 8) * 8 * 8
+    # Policy: (8 * 4 + 8) * 8 * 8
     #         (queen moves + knight moves) * board (starting position)
     # Value : Single value in (-1, 1)
 
     # Common Block Counts x Filter Counts: 10×128, 20×256, 24×320.
 
-    def __init__(self, block_count, filter_count, se_channels=32):
+    def __init__(self, block_count: int, filter_count: int, se_channels: int = 32):
         super(LeelaCNN, self).__init__()
         self.input = nn.Sequential(
             nn.Conv2d(
@@ -151,7 +146,6 @@ class LeelaCNN(nn.Module):
             nn.Conv2d(filter_count, 32, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(32),
             nn.Conv2d(32, 128, kernel_size=8, stride=1, padding=0),
-            nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(128, 1),
