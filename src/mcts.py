@@ -154,8 +154,8 @@ class MCTS:
     def ponder_time(
         self, board: Board, time_ns: int, simulation_time_ns: int = int(1e7)
     ) -> Move:
-        start_time = time.time_ns()
-        while time.time_ns() + simulation_time_ns - start_time <= time_ns:
+        stop_time = time.time_ns() + time_ns - simulation_time_ns
+        while time.time_ns() <= stop_time:
             self.search(board)
 
         return self.get_most_explored_move(board)
