@@ -1,5 +1,6 @@
 import os
 import random
+from typing import Any
 import mlflow
 import numpy as np
 import torch
@@ -20,109 +21,125 @@ def set_seed(seed: int = 42):
 
 
 def get_device():
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        return torch.device("mps")
-    else:
-        return torch.device("cpu")
+    return torch.accelerator.current_accelerator()
 
+def save_checkpoint(model, model_dir, step):
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    checkpoint_path = os.path.join(model_dir, f"checkpoint_{step}_{timestamp}.pth")
+    torch.save({"state_dict": model.state_dict()}, checkpoint_path)
+    mlflow.log_artifact(checkpoint_path, artifact_path=f"checkpoint_{step}")
+    mlflow.pytorch.log_state_dict(
+        model.state_dict(), artifact_path=f"checkpoint_{step}_state_dict"
+    )
 
 def get_dataloaders(train_set, val_set, batch_size, num_workers=4):
     train_loader = DataLoader(
         train_set,
         batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
+        # num_workers=num_workers,
         pin_memory=True,
     )
     val_loader = DataLoader(
         val_set,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=num_workers,
+        # num_workers=num_workers,
         pin_memory=True,
     )
 
     return train_loader, val_loader
 
 
-def train_one_epoch(model, device, loader, loss_fn, optimizer, epoch):
+def train_one_epoch(model, device, loader, loss_fn, optimizer, epoch, step, model_dir):
     model.train()
     running_loss = 0.0
-    correct = 0
+    running_policy_loss = 0.0
+    running_value_loss = 0.0
     total = 0
-    for batch, (xb, yb) in enumerate(loader):
-        xb, yb = xb.to(device), yb.to(device)
+    for batch, (xb, mask, yb_policy, yb_value) in enumerate(loader):
+        xb, mask, yb_policy, yb_value = xb.to(device), mask.to(device), yb_policy.to(device), yb_value.to(device)
         optimizer.zero_grad()
-        logits = model(xb)
-        loss = loss_fn(logits, yb)
+        policy, value = model(xb)
+        loss, policy_loss, value_loss = loss_fn(mask, *(policy, value), *(yb_policy, yb_value))
         loss.backward()
         optimizer.step()
 
         running_loss += loss.item() * xb.shape[0]
-        preds = logits.argmax(dim=1)
-        batch_correct = (preds == yb).sum().item()
-        correct += batch_correct
+        running_policy_loss += policy_loss.item() * xb.shape[0]
+        running_value_loss += value_loss.item() * xb.shape[0]
         total += xb.shape[0]
 
         # Logging
         mlflow.log_metric(
-            "train_batch_loss", loss.item(), step=(epoch - 1) * len(loader) + batch
+            "train_batch_loss", loss.item(), step=step[0]
         )
         mlflow.log_metric(
-            "train_batch_acc",
-            batch_correct / xb.shape[0],
-            step=(epoch - 1) * len(loader) + batch,
+            "train_batch_policy_loss", policy_loss.item(), step=step[0]
         )
+        mlflow.log_metric(
+            "train_batch_value_loss", value_loss.item(), step=step[0]
+        )
+        step[0] += 1
+        if step[0] % 5000 == 0:
+            save_checkpoint(model, model_dir, step[0])
 
     avg_loss = running_loss / total
-    acc = correct / total
-    return avg_loss, acc
+    avg_policy_loss = running_policy_loss / total
+    avg_value_loss = running_value_loss / total
+    return avg_loss, avg_policy_loss, avg_value_loss
 
 
 def evaluate(model, device, loader, loss_fn):
     model.eval()
     running_loss = 0.0
-    correct = 0
+    running_policy_loss = 0.0
+    running_value_loss = 0.0
     total = 0
     with torch.no_grad():
-        for xb, yb in loader:
-            xb, yb = xb.to(device), yb.to(device)
-            logits = model(xb)
-            loss = loss_fn(logits, yb)
+        for (xb, mask, yb_policy, yb_value) in loader:
+            xb, mask, yb_policy, yb_value = xb.to(device), mask.to(device), yb_policy.to(device), yb_value.to(device)
+            policy, value = model(xb)
+            loss, policy_loss, value_loss = loss_fn(mask, *(policy, value), *(yb_policy, yb_value))
 
             running_loss += loss.item() * xb.shape[0]
-            preds = logits.argmax(dim=1)
-            correct += (preds == yb).sum().item()
+            running_policy_loss += policy_loss.item() * xb.shape[0]
+            running_value_loss += value_loss.item() * xb.shape[0]
             total += xb.shape[0]
 
     avg_loss = running_loss / total
-    acc = correct / total
-    return avg_loss, acc
+    avg_policy_loss = running_policy_loss / total
+    avg_value_loss = running_value_loss / total
+    return avg_loss, avg_policy_loss, avg_value_loss
 
 
-def plot_metrics(history, out_path):
-    epochs = list(range(1, len(history["train_loss"]) + 1))
-    plt.figure(figsize=(10, 4))
+# def plot_metrics(history, out_path):
+#     epochs = list(range(1, len(history["train_loss"]) + 1))
+#     plt.figure(figsize=(10, 4))
 
-    plt.subplot(1, 2, 1)
-    plt.plot(epochs, history["train_loss"], label="train_loss")
-    plt.plot(epochs, history["val_loss"], label="val_loss")
-    plt.xlabel("epoch")
-    plt.ylabel("loss")
-    plt.legend()
+#     plt.subplot(1, 3, 1)
+#     plt.plot(epochs, history["train_loss"], label="train_loss")
+#     plt.plot(epochs, history["val_loss"], label="val_loss")
+#     plt.xlabel("epoch")
+#     plt.ylabel("loss")
+#     plt.legend()
 
-    plt.subplot(1, 2, 2)
-    plt.plot(epochs, history["train_acc"], label="train_acc")
-    plt.plot(epochs, history["val_acc"], label="val_acc")
-    plt.xlabel("epoch")
-    plt.ylabel("accuracy")
-    plt.legend()
+#     plt.subplot(1, 3, 2)
+#     plt.plot(epochs, history["train_policy_loss"], label="train_policy_loss")
+#     plt.plot(epochs, history["val_policy_loss"], label="val_policy_loss")
+#     plt.xlabel("epoch")
+#     plt.ylabel("policy loss")
+#     plt.legend()
 
-    plt.tight_layout()
-    plt.savefig(out_path)
-    plt.close()
+#     plt.subplot(1, 3, 3)
+#     plt.plot(epochs, history["train_value_loss"], label="train_value_loss")
+#     plt.plot(epochs, history["val_value_loss"], label="val_value_loss")
+#     plt.xlabel("epoch")
+#     plt.ylabel("value loss")
+#     plt.legend()
+
+#     plt.tight_layout()
+#     plt.savefig(out_path)
+#     plt.close()
 
 
 def optimizer_parameter_log(optimizer):
@@ -140,14 +157,15 @@ def train(
     model: torch.nn.Module,
     loss_fn: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler._LRScheduler,
+    scheduler: Any,
     epochs: int,
     batch_size: int,
     train_set: torch.utils.data.Dataset,
     val_set: torch.utils.data.Dataset,
     num_workers: int = 4,
+    seed: int = 42,
 ):
-    set_seed()
+    set_seed(seed)
 
     device = get_device()
 
@@ -173,35 +191,34 @@ def train(
         )
 
         os.makedirs(model_dir)
+        step = [1]
 
         for epoch in range(1, epochs + 1):
-            train_loss, train_acc = train_one_epoch(
-                model, device, train_loader, loss_fn, optimizer, epoch
+            train_loss, train_policy_loss, train_value_loss = train_one_epoch(
+                model, device, train_loader, loss_fn, optimizer, epoch, step, model_dir
             )
-            val_loss, val_acc = evaluate(model, device, val_loader, loss_fn)
+            val_loss, val_policy_loss, val_value_loss = evaluate(model, device, val_loader, loss_fn)
             scheduler.step()
 
             history["train_loss"].append(train_loss)
             history["val_loss"].append(val_loss)
-            history["train_acc"].append(train_acc)
-            history["val_acc"].append(val_acc)
+            history["train_policy_loss"].append(train_policy_loss   )
+            history["val_policy_loss"].append(val_policy_loss)
+            history["train_value_loss"].append(train_value_loss)
+            history["val_value_loss"].append(val_value_loss)
 
             # Log metrics for this epoch
             mlflow.log_metric("train_loss", train_loss, step=epoch)
             mlflow.log_metric("val_loss", val_loss, step=epoch)
-            mlflow.log_metric("train_acc", train_acc, step=epoch)
-            mlflow.log_metric("val_acc", val_acc, step=epoch)
+            mlflow.log_metric("train_policy_loss", train_policy_loss, step=epoch)
+            mlflow.log_metric("val_policy_loss", val_policy_loss, step=epoch)
+            mlflow.log_metric("train_value_loss", train_value_loss, step=epoch)
+            mlflow.log_metric("val_value_loss", val_value_loss, step=epoch)
             print(
-                f"Epoch {epoch}/{epochs}: train_loss={train_loss:.4f} val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
+                f"Epoch {epoch}/{epochs}: train_loss={train_loss:.4f} val_loss={val_loss:.4f} val_policy_loss={val_policy_loss:.4f} val_value_loss={val_value_loss:.4f} train_policy_loss={train_policy_loss:.4f} train_value_loss={train_value_loss:.4f}"
             )
 
-            # Save Checkpoint
-            checkpoint_path = os.path.join(model_dir, f"checkpoint_{epoch}.pth")
-            torch.save({"state_dict": model.state_dict()}, checkpoint_path)
-            mlflow.log_artifact(checkpoint_path, artifact_path=f"checkpoint_{epoch}")
-            mlflow.pytorch.log_state_dict(
-                model.state_dict(), artifact_path=f"checkpoint_{epoch}_state_dict"
-            )
+            save_checkpoint(model, model_dir, step[0])
 
         # Save model and log as artifact
         model_path = os.path.join(model_dir, "model.pth")
@@ -212,8 +229,8 @@ def train(
         )
 
         # Plot and log metrics figure
-        metrics_png = os.path.join(model_dir, "metrics.png")
-        plot_metrics(history, metrics_png)
-        mlflow.log_artifact(metrics_png, artifact_path="plots")
+        # metrics_png = os.path.join(model_dir, "metrics.png")
+        # plot_metrics(history, metrics_png)
+        # mlflow.log_artifact(metrics_png, artifact_path="plots")
 
         print("Training complete. Artifacts and metrics logged to MLflow.")

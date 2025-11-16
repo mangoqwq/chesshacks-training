@@ -68,6 +68,19 @@ def move_to_index(move: Move) -> int:
     index = direction * 40 + from_row * 8 + from_col
     return index
 
+def board_to_legal_mask(board: Board) -> Tensor:
+    mask = torch.zeros(( (8 * 4 + 8) * 8 * 8,), dtype=torch.bool)
+    for move in board.legal_moves:
+        if board.turn == chess.BLACK:
+            move = chess.Move(
+                chess.square_mirror(move.from_square),
+                chess.square_mirror(move.to_square),
+                promotion=move.promotion,
+            )
+        index = move_to_index(move)
+        mask[index] = 1
+    return mask
+
 def policy_dict_to_policy(policy_dict: dict[Move, float], board: Board) -> Tensor:
     policy = torch.zeros(( (8 * 4 + 8) * 8 * 8,), dtype=torch.float32)
     for move, prob in policy_dict.items():
@@ -78,7 +91,7 @@ def policy_dict_to_policy(policy_dict: dict[Move, float], board: Board) -> Tenso
                 promotion=move.promotion,
             )
         index = move_to_index(move)
-        policy[index] = prob
+        policy[index] = float(prob)
     return policy
 
 class SEBlock(nn.Module):
