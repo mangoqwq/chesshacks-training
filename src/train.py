@@ -7,6 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 import os
 import datetime
+from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 
@@ -56,7 +57,9 @@ def train_one_epoch(model, device, loader, loss_fn, optimizer, epoch, step, mode
     running_policy_loss = 0.0
     running_value_loss = 0.0
     total = 0
-    for batch, (xb, mask, yb_policy, yb_value) in enumerate(loader):
+
+    tqdm_loader = tqdm(loader, desc=f"Epoch {epoch} Training", unit="batch")
+    for batch, (xb, mask, yb_policy, yb_value) in enumerate(tqdm_loader):
         xb, mask, yb_policy, yb_value = xb.to(device), mask.to(device), yb_policy.to(device), yb_value.to(device)
         optimizer.zero_grad()
         policy, value = model(xb)
