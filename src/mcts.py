@@ -141,8 +141,10 @@ class MCTS:
             return Move.null()
 
         node = self.get_node(board)
-        visit_counts = [np.pow(edge.num_visits, 1 / temperature) for edge in node.edges]
-        idx = np.random.choice(len(node.moves), p=visit_counts)
+        weights = np.array(
+            [np.pow(edge.num_visits, 1 / temperature) for edge in node.edges]
+        )
+        idx = np.random.choice(len(node.moves), p=weights / weights.sum())
         return node.moves[idx]
 
     def ponder(self, board: Board, num_simulations: int, temperature=1.0) -> Move:
