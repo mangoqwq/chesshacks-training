@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import time
 
 from leela_cnn import board_to_tensor, move_to_index
+from util import get_nn_moves
 
 
 def flip_move(move: Move) -> Move:
@@ -59,7 +60,7 @@ class Node:
 class MCTS:
     model: Any
     c_puct: float64
-    nodes: Dict[int, Node]
+    nodes: Dict[uint64, Node]
 
     def __init__(self, model: Any, c_puct: float64 = float64(1.0)):
         self.model = model
@@ -71,9 +72,10 @@ class MCTS:
         if board_hash not in self.nodes:
             tensor_board = board_to_tensor(board)
             nn_policy, nn_val = self.model.predict(tensor_board)
+            legal_moves = get_nn_moves(board)
             move_indices = [
                 move_to_index(move if board.turn == chess.WHITE else flip_move(move))
-                for move in board.legal_moves
+                for move in legal_moves
             ]
             nn_policy = nn_policy[move_indices]
             torch.softmax(nn_policy, dim=0, out=nn_policy)
@@ -84,12 +86,12 @@ class MCTS:
                     num_visits=int64(0),
                     p_prior=float64(nn_policy[i].item()),
                 )
-                for i, move in enumerate(board.legal_moves)
+                for i, _ in enumerate(legal_moves)
             ]
             self.nodes[board_hash] = Node(
                 nn_value=float64(nn_val),
                 board=board,
-                moves=list(board.legal_moves),
+                moves=list(legal_moves),
                 edges=edges,
                 num_visits=int64(0),
             )

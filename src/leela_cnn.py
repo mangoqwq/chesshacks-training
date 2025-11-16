@@ -41,9 +41,7 @@ def move_to_index(move: Move) -> int:
     from_col = chess.square_file(from_square)
     to_row = chess.square_rank(to_square)
     to_col = chess.square_file(to_square)
-    if chess.square_distance(from_square, to_square) == 3 and (
-        abs(from_row - to_row) == 2 or abs(from_col - to_col) == 2
-    ):
+    if {abs(from_row - to_row), abs(from_col - to_col)} == {2, 1}:
         # knight moves
         diff_to_dir = {
             (2, 1): 0,
@@ -70,6 +68,18 @@ def move_to_index(move: Move) -> int:
     index = direction * 40 + from_row * 8 + from_col
     return index
 
+def policy_dict_to_policy(policy_dict: dict[Move, float], board: Board) -> Tensor:
+    policy = torch.zeros(( (8 * 4 + 8) * 8 * 8,), dtype=torch.float32)
+    for move, prob in policy_dict.items():
+        if board.turn == chess.BLACK:
+            move = chess.Move(
+                chess.square_mirror(move.from_square),
+                chess.square_mirror(move.to_square),
+                promotion=move.promotion,
+            )
+        index = move_to_index(move)
+        policy[index] = prob
+    return policy
 
 class SEBlock(nn.Module):
     def __init__(self, channels, se_channels):
