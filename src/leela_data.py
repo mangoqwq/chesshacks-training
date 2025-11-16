@@ -134,12 +134,15 @@ class Lc0Loader:
 
 
 class Lc0TeacherDataset(IterableDataset):
-    def __init__(self, lc0_loader: Lc0Loader):
+    def __init__(self, lc0_loader: Lc0Loader, filter = None):
         self.gen = lc0_loader
+        self.filter = filter
 
     def __iter__(self):
         for dp in self.gen:
             board, policy, value = dp.board, dp.policy, dp.value
+            if self.filter is not None and not self.filter(board, policy, value):
+                continue
             yield (
                 board_to_tensor(board),
                 board_to_legal_mask(board),
