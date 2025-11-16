@@ -136,28 +136,33 @@ class MCTS:
         node.register_visit(edge, value)
         return -value
 
-    def get_most_explored_move(self, board: Board) -> Move:
+    def get_move(self, board: Board, temperature: float) -> Move:
         if board.is_game_over():
             return Move.null()
-        node = self.get_node(board)
-        visit_counts = [edge.num_visits for edge in node.edges]
-        most_visited_idx = int(np.argmax(visit_counts))
-        return node.moves[most_visited_idx]
 
-    def ponder(self, board: Board, num_simulations: int) -> Move:
+        node = self.get_node(board)
+        visit_counts = [np.pow(edge.num_visits, 1 / temperature) for edge in node.edges]
+        idx = np.random.choice(len(node.moves), p=visit_counts)
+        return node.moves[idx]
+
+    def ponder(self, board: Board, num_simulations: int, temperature=1.0) -> Move:
         if board.is_game_over():
             return Move.null()
 
         for _ in range(num_simulations):
             self.search(board)
 
-        return self.get_most_explored_move(board)
+        return self.get_move(board, temperature=temperature)
 
     def ponder_time(
-        self, board: Board, ponder_time_ns: int, simulation_time_ns: int = int(1e7)
+        self,
+        board: Board,
+        ponder_time_ns: int,
+        temperature=1.0,
+        simulation_time_ns: int = int(1e7),
     ) -> Move:
         stop_time = time.time_ns() + ponder_time_ns - simulation_time_ns
         while time.time_ns() <= stop_time:
             self.search(board)
 
-        return self.get_most_explored_move(board)
+        return self.get_move(board, temperature=temperature)
