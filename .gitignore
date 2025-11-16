@@ -4,3 +4,5 @@ __pycache__/
 cclr/
 ext/
 data/
+notebooks/models/
+.DS_Store
