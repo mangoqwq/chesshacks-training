@@ -81,7 +81,7 @@ def lc0_convert(
     lc0_data: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
 ) -> list[DataPoint]:
     inputs, policy, z, q, ply_count = lc0_data
-    batch_size = inputs[0].shape[0]
+    batch_size = inputs.shape[0]
     data: list[DataPoint] = []
     for i in range(batch_size):
         planes_i = inputs[i, 0:12]
@@ -134,12 +134,15 @@ class Lc0Loader:
 
 
 class Lc0TeacherDataset(IterableDataset):
-    def __init__(self, lc0_loader: Lc0Loader):
+    def __init__(self, lc0_loader: Lc0Loader, filter = None):
         self.gen = lc0_loader
+        self.filter = filter
 
     def __iter__(self):
         for dp in self.gen:
             board, policy, value = dp.board, dp.policy, dp.value
+            if self.filter is not None and not self.filter(board, policy, value):
+                continue
             yield (
                 board_to_tensor(board),
                 board_to_legal_mask(board),

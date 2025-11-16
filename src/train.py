@@ -24,14 +24,16 @@ def set_seed(seed: int = 42):
 def get_device():
     return torch.accelerator.current_accelerator()
 
+
 def save_checkpoint(model, model_dir, step):
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     checkpoint_path = os.path.join(model_dir, f"checkpoint_{step}_{timestamp}.pth")
     torch.save(model.state_dict(), checkpoint_path)
     mlflow.log_artifact(checkpoint_path, artifact_path=f"checkpoint_{step}")
     mlflow.pytorch.log_state_dict(
         model.state_dict(), artifact_path=f"checkpoint_{step}_state_dict"
     )
+
 
 def get_dataloaders(train_set, val_set, batch_size, num_workers=4):
     train_loader = DataLoader(
@@ -51,7 +53,17 @@ def get_dataloaders(train_set, val_set, batch_size, num_workers=4):
     return train_loader, val_loader
 
 
-def train_one_epoch(model, device, loader, loss_fn, optimizer, epoch, step, model_dir, save_every_n_steps):
+def train_one_epoch(
+    model,
+    device,
+    loader,
+    loss_fn,
+    optimizer,
+    epoch,
+    step,
+    model_dir,
+    save_every_n_steps,
+):
     model.train()
     running_loss = 0.0
     running_policy_loss = 0.0
@@ -60,10 +72,17 @@ def train_one_epoch(model, device, loader, loss_fn, optimizer, epoch, step, mode
 
     tqdm_loader = tqdm(loader, desc=f"Epoch {epoch} Training", unit="batch")
     for batch, (xb, mask, yb_policy, yb_value) in enumerate(tqdm_loader):
-        xb, mask, yb_policy, yb_value = xb.to(device), mask.to(device), yb_policy.to(device), yb_value.to(device)
+        xb, mask, yb_policy, yb_value = (
+            xb.to(device),
+            mask.to(device),
+            yb_policy.to(device),
+            yb_value.to(device),
+        )
         optimizer.zero_grad()
         policy, value = model(xb)
-        loss, policy_loss, value_loss = loss_fn(mask, *(policy, value), *(yb_policy, yb_value))
+        loss, policy_loss, value_loss = loss_fn(
+            mask, *(policy, value), *(yb_policy, yb_value)
+        )
         loss.backward()
         optimizer.step()
 
@@ -73,15 +92,9 @@ def train_one_epoch(model, device, loader, loss_fn, optimizer, epoch, step, mode
         total += xb.shape[0]
 
         # Logging
-        mlflow.log_metric(
-            "train_batch_loss", loss.item(), step=step[0]
-        )
-        mlflow.log_metric(
-            "train_batch_policy_loss", policy_loss.item(), step=step[0]
-        )
-        mlflow.log_metric(
-            "train_batch_value_loss", value_loss.item(), step=step[0]
-        )
+        mlflow.log_metric("train_batch_loss", loss.item(), step=step[0])
+        mlflow.log_metric("train_batch_policy_loss", policy_loss.item(), step=step[0])
+        mlflow.log_metric("train_batch_value_loss", value_loss.item(), step=step[0])
         step[0] += 1
         if step[0] % save_every_n_steps == 0:
             save_checkpoint(model, model_dir, step[0])
@@ -99,10 +112,17 @@ def evaluate(model, device, loader, loss_fn):
     running_value_loss = 0.0
     total = 0
     with torch.no_grad():
-        for (xb, mask, yb_policy, yb_value) in loader:
-            xb, mask, yb_policy, yb_value = xb.to(device), mask.to(device), yb_policy.to(device), yb_value.to(device)
+        for xb, mask, yb_policy, yb_value in loader:
+            xb, mask, yb_policy, yb_value = (
+                xb.to(device),
+                mask.to(device),
+                yb_policy.to(device),
+                yb_value.to(device),
+            )
             policy, value = model(xb)
-            loss, policy_loss, value_loss = loss_fn(mask, *(policy, value), *(yb_policy, yb_value))
+            loss, policy_loss, value_loss = loss_fn(
+                mask, *(policy, value), *(yb_policy, yb_value)
+            )
 
             running_loss += loss.item() * xb.shape[0]
             running_policy_loss += policy_loss.item() * xb.shape[0]
@@ -194,19 +214,31 @@ def train(
             "models", model_name, f"{datetime.datetime.now():%Y%m%d_%H%M%S}"
         )
 
+        mlflow.set_tag("model_dir", str(model_dir))
+
         os.makedirs(model_dir)
         step = [1]
 
         for epoch in range(1, epochs + 1):
             train_loss, train_policy_loss, train_value_loss = train_one_epoch(
-                model, device, train_loader, loss_fn, optimizer, epoch, step, model_dir, save_every_n_steps
+                model,
+                device,
+                train_loader,
+                loss_fn,
+                optimizer,
+                epoch,
+                step,
+                model_dir,
+                save_every_n_steps,
             )
-            val_loss, val_policy_loss, val_value_loss = evaluate(model, device, val_loader, loss_fn)
+            val_loss, val_policy_loss, val_value_loss = evaluate(
+                model, device, val_loader, loss_fn
+            )
             scheduler.step()
 
             history["train_loss"].append(train_loss)
             history["val_loss"].append(val_loss)
-            history["train_policy_loss"].append(train_policy_loss   )
+            history["train_policy_loss"].append(train_policy_loss)
             history["val_policy_loss"].append(val_policy_loss)
             history["train_value_loss"].append(train_value_loss)
             history["val_value_loss"].append(val_value_loss)
