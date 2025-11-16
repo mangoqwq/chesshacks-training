@@ -7,7 +7,7 @@ from chess import Board, Move
 
 
 def board_to_tensor(board: Board) -> Tensor:
-    assert not board.is_game_over(), "Board is in terminal state"
+    # assert not board.is_game_over(), "Board is in terminal state"
     player_color = board.turn
     if board.turn == chess.BLACK:
         board = board.mirror()

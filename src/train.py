@@ -50,7 +50,7 @@ def get_dataloaders(train_set, val_set, batch_size, num_workers=4):
     return train_loader, val_loader
 
 
-def train_one_epoch(model, device, loader, loss_fn, optimizer, epoch, step, model_dir):
+def train_one_epoch(model, device, loader, loss_fn, optimizer, epoch, step, model_dir, save_every_n_steps):
     model.train()
     running_loss = 0.0
     running_policy_loss = 0.0
@@ -80,7 +80,7 @@ def train_one_epoch(model, device, loader, loss_fn, optimizer, epoch, step, mode
             "train_batch_value_loss", value_loss.item(), step=step[0]
         )
         step[0] += 1
-        if step[0] % 5000 == 0:
+        if step[0] % save_every_n_steps == 0:
             save_checkpoint(model, model_dir, step[0])
 
     avg_loss = running_loss / total
@@ -164,6 +164,7 @@ def train(
     val_set: torch.utils.data.Dataset,
     num_workers: int = 4,
     seed: int = 42,
+    save_every_n_steps: int = 5000,
 ):
     set_seed(seed)
 
@@ -195,7 +196,7 @@ def train(
 
         for epoch in range(1, epochs + 1):
             train_loss, train_policy_loss, train_value_loss = train_one_epoch(
-                model, device, train_loader, loss_fn, optimizer, epoch, step, model_dir
+                model, device, train_loader, loss_fn, optimizer, epoch, step, model_dir, save_every_n_steps
             )
             val_loss, val_policy_loss, val_value_loss = evaluate(model, device, val_loader, loss_fn)
             scheduler.step()
