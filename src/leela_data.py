@@ -132,9 +132,33 @@ class Lc0Loader:
             for dp in data_points:
                 yield dp
 
+class Lc0LoaderSingle:
+    def __init__(
+        self,
+        files: list[Path],
+        batch_size: int = 1024,
+        skip_factor: int = 32,
+        validation: bool = False,
+    ):
+        self.files = files
+        self.batch_size = batch_size
+        self.skip_factor = skip_factor
+        self.validation = validation
+
+    def __iter__(self):
+        gen = data_generator(
+            files=self.files,
+            batch_size=self.batch_size,
+            skip_factor=self.skip_factor,
+            validation=self.validation,
+        )
+        for lc0_data in gen:
+            data_points = lc0_convert(lc0_data) # type: ignore
+            for dp in data_points:
+                yield dp
 
 class Lc0TeacherDataset(IterableDataset):
-    def __init__(self, lc0_loader: Lc0Loader, filter = None):
+    def __init__(self, lc0_loader: Lc0Loader | Lc0LoaderSingle, filter = None):
         self.gen = lc0_loader
         self.filter = filter
 
