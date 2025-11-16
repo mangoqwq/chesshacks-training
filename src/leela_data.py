@@ -81,7 +81,7 @@ def lc0_convert(
     lc0_data: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
 ) -> list[DataPoint]:
     inputs, policy, z, q, ply_count = lc0_data
-    batch_size = inputs[0].shape[0]
+    batch_size = inputs.shape[0]
     data: list[DataPoint] = []
     for i in range(batch_size):
         planes_i = inputs[i, 0:12]
@@ -128,7 +128,9 @@ class Lc0Loader:
             validation=self.validation,
         )
         for lc0_data in gen:
+            print(lc0_data)
             data_points = lc0_convert(lc0_data) # type: ignore
+            print("!", len(data_points))
             for dp in data_points:
                 yield dp
 
