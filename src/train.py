@@ -26,7 +26,7 @@ def get_device():
 def save_checkpoint(model, model_dir, step):
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     checkpoint_path = os.path.join(model_dir, f"checkpoint_{step}_{timestamp}.pth")
-    torch.save({"state_dict": model.state_dict()}, checkpoint_path)
+    torch.save(model.state_dict(), checkpoint_path)
     mlflow.log_artifact(checkpoint_path, artifact_path=f"checkpoint_{step}")
     mlflow.pytorch.log_state_dict(
         model.state_dict(), artifact_path=f"checkpoint_{step}_state_dict"
@@ -222,7 +222,7 @@ def train(
 
         # Save model and log as artifact
         model_path = os.path.join(model_dir, "model.pth")
-        torch.save({"state_dict": model.state_dict()}, model_path)
+        torch.save(model.state_dict(), model_path)
         mlflow.log_artifact(model_path, artifact_path="model")
         mlflow.pytorch.log_state_dict(
             model.state_dict(), artifact_path="model_state_dict"

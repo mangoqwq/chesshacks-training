@@ -102,25 +102,33 @@ def lc0_convert(
 class Lc0Loader:
     def __init__(
         self,
-        files: list[Path],
+        chunk_dir: Path,
         batch_size: int = 1024,
         num_workers: int = 16,
-        shuffle_buffer_size: int = 2**19,
+        shuffle_buffer_factor: int = 128,
         skip_factor: int = 32,
+        validation: bool = False,
     ):
-
-        self.gen = data_generator(
-            files=files,
-            batch_size=batch_size,
-            # num_workers=num_workers,
-            # shuffle_buffer_size=shuffle_buffer_size,
-            skip_factor=skip_factor,
-            validation=False,
-        )
+        # Store parameters instead of generator to make it pickleable
+        self.chunk_dir = chunk_dir
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.shuffle_buffer_size = shuffle_buffer_factor * batch_size
+        self.skip_factor = skip_factor
+        self.validation = validation
 
     def __iter__(self):
-        for lc0_data in self.gen:
-            data_points = lc0_convert(lc0_data)
+        # Create generator in __iter__ so each worker process gets its own generator
+        gen = multiprocess_generator(
+            chunk_dir=self.chunk_dir,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            shuffle_buffer_size=self.shuffle_buffer_size,
+            skip_factor=self.skip_factor,
+            validation=self.validation,
+        )
+        for lc0_data in gen:
+            data_points = lc0_convert(lc0_data) # type: ignore
             for dp in data_points:
                 yield dp
 

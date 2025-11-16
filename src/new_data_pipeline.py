@@ -10,6 +10,7 @@ from numpy.random import default_rng
 
 RECORD_SIZE = 8356
 ARRAY_SHAPES_WITHOUT_BATCH = [(112, 64), (1858,), (3,), (3,), (1,)]
+SHUFFLE_EVENT_TIMEOUT = 60
 
 
 def file_generator(file_list, random):
@@ -229,11 +230,16 @@ def multiprocess_generator(
     else:
         shuffle(files)
     worker_file_lists = [files[i::num_workers] for i in range(num_workers)]
+    worker_file_lists = [lst for lst in worker_file_lists if lst]
+    num_workers = len(worker_file_lists)
+    if num_workers == 0:
+        raise RuntimeError("No worker received any files. Check input directory and file patterns.")
     ctx = get_context("spawn")  # For Windows compatibility
     array_ready_events = []
     main_process_access_events = []
     shared_arrays = []
     shared_mem = []
+    processes = []
     array_shapes = [[batch_size] + list(shape) for shape in ARRAY_SHAPES_WITHOUT_BATCH]
     array_sizes = [int(np.prod(shape)) * 4 for shape in array_shapes]
     shuffle_buffer_shapes = [
@@ -275,10 +281,18 @@ def multiprocess_generator(
             daemon=True,
         )
         process.start()
+        processes.append(process)
 
     for i in trange(shuffle_buffer_size // batch_size, desc="Filling shuffle buffer"):
         proc = i % num_workers
-        array_ready_events[proc].wait()
+        is_ready = array_ready_events[proc].wait(timeout=SHUFFLE_EVENT_TIMEOUT)
+        if not is_ready:
+            proc_alive = processes[proc].is_alive()
+            proc_exitcode = processes[proc].exitcode
+            raise TimeoutError(
+                "Timed out waiting for worker process to supply batch. "
+                f"worker={proc} alive={proc_alive} exitcode={proc_exitcode}"
+            )
         for array, shuffle_buffer in zip(shared_arrays[proc], shuffle_buffers):
             shuffle_buffer[i * batch_size : (i + 1) * batch_size] = array
         array_ready_events[proc].clear()
