@@ -128,9 +128,7 @@ class Lc0Loader:
             validation=self.validation,
         )
         for lc0_data in gen:
-            print(lc0_data)
             data_points = lc0_convert(lc0_data) # type: ignore
-            print("!", len(data_points))
             for dp in data_points:
                 yield dp
 
